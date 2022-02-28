@@ -2,11 +2,12 @@
 #include "SoftwareSerial.h"
 
 // SIM card PIN (leave empty, if not defined)
-const char simPIN[] = "1503";
+const char simPIN[] = "";//"1503";
 
 // phone number to send SMS: + (plus sign) and country code, for Portugal +351, followed by phone number
 #define SMS_TARGET  "+4917680181926"
 
+const int resetPin= 5;
 const int sensorPin= SIG_PIN;
 const int controlPin= PWR_PIN;
 const int espPin= PWR_PIN_ESP32;
@@ -106,36 +107,21 @@ void setup()
   delay(1000);
 
   while (!SerialMon);
-  SerialMon.println("Initializing...");
-  delay(6000);
+  Serial.println("Initializing...");
+  delay(1000);
 
-  //Factory reset 
-  SerialAT.println("AT&FZE0&W"); //Factory reset
-  updateSerial();
-  SerialAT.println("AT+IPR=0"); 
-  updateSerial();
-  SerialAT.println("AT+IFC=0,0"); 
-  updateSerial();
-  SerialAT.println("AT+ICF=3,3"); 
-  updateSerial();
-  SerialAT.println("AT+CSCLK=0"); 
-  updateSerial();
-  SerialAT.println("AT&W"); 
-  updateSerial();
-
-
-#ifdef USE_AT_CMDS
-  digitalWrite(controlPin, HIGH);
-  SerialAT.println("AT"); //Once the handshake test is successful, it will back to OK
-  updateSerial();
-  SerialAT.println("AT+CSQ"); //Signal quality test, value range is 0-31 , 31 is the best
-  updateSerial();
-  SerialAT.println("AT+CCID"); //Read SIM information to confirm whether the SIM is plugged
-  updateSerial();
-  SerialAT.println("AT+CREG?"); //Check whether it has registered in the network
-  updateSerial();
-  digitalWrite(controlPin, LOW);
-#endif
+  // SerialAT.println("AT"); //Once the handshake test is successful, it will back to OK
+  // updateSerial();
+  // SerialAT.println("AT+CSQ"); //Signal quality test, value range is 0-31 , 31 is the best
+  // updateSerial();
+  // SerialAT.println("AT+CCID"); //Read SIM information to confirm whether the SIM is plugged
+  // updateSerial();
+  // SerialAT.println("AT+CREG?"); //Check whether it has registered in the network
+  // updateSerial();
+  // digitalWrite(resetPin,1);
+  // delay(1000);
+  // digitalWrite(resetPin,0);
+  // delay(1000);
 }
 
 void loop()
@@ -150,16 +136,17 @@ void loop()
   
   auto smsText= "Bodenfeuchte-Wert: " + String(reading);
   SerialMon.println(smsText);
+  
+  digitalWrite(resetPin,1);
+  delay(1000);
+  digitalWrite(resetPin,0);
+  delay(1000);
 
 #ifdef USE_TINYGSM
-  int j=0;
+
   if (!modem.init()) {
-    ++j;
     // if (!modem.restart()) {
     SerialMon.println("Failed to restart modem, delaying 10s and retrying");
-    // restart autobaud in case GSM just rebooted
-    // TinyGsmAutoBaud(SerialAT, GSM_AUTOBAUD_MIN, GSM_AUTOBAUD_MAX);
-    //return;
   }
 
   String name = modem.getModemName();
@@ -179,8 +166,8 @@ void loop()
   int csq = modem.getSignalQuality();
   SerialMon.println("Signal quality: " + String(csq));
 
-  if(++k<4){
-    SerialMon.println("Schleifenzähler: " + String(k));
+  if(k<4){
+    SerialMon.println("Loop counter: " + String(k));
     auto res = modem.sendSMS(SMS_TARGET, String(smsText));
     updateSerial();
     SerialMon.println("SMS: " + String(res ? "OK" : "fail"));
@@ -189,35 +176,25 @@ void loop()
 #endif
 
 #ifdef USE_AT_CMDS
-  // prepare sms
-  SerialAT.println("AT"); //Once the handshake test is successful, it will back to OK
+  SerialAT.println("AT"); // Initial handshake
   updateSerial();
-  SerialAT.println("AT+CMEE"); //Once the handshake test is successful, it will back to OK
+  SerialAT.println("AT+CMEE=2"); //Check whether it has registered in the network
   updateSerial();
-  SerialAT.println("AT+CPIN"); //Signal quality test, value range is 0-31 , 31 is the best
-  updateSerial();
-  SerialAT.println("AT+COPS"); //Signal quality test, value range is 0-31 , 31 is the best
-  updateSerial();
-  SerialAT.println("AT+CSQ"); //Signal quality test, value range is 0-31 , 31 is the best
-  updateSerial();
-  SerialAT.println("AT+CCID"); //Read SIM information to confirm whether the SIM is plugged
+  SerialAT.println("AT+CSQ"); // Signal quality
   updateSerial();
   SerialAT.println("AT+CREG?"); //Check whether it has registered in the network
   updateSerial();
-  SerialAT.println("AT+CSCS=\"GSM\""); //Check whether it has registered in the network
+  SerialAT.println("AT+CFUN?"); //PIN
   updateSerial();
-  SerialAT.println("AT+CSCS?"); //Check whether it has registered in the network
+  SerialAT.println("AT+CREG?"); //Check whether it has registered in the network
   updateSerial();
-  // see: https://forums.quectel.com/t/cpin-not-inserted-mc60/6922
-  SerialAT.println("AT+CFUN=1"); //Read SIM information to confirm whether the SIM is plugged
+  SerialAT.println("AT+CCID"); //Read SIM information to confirm whether the SIM is plugged
   updateSerial();
-  SerialAT.println("AT+CPIN?"); //Check whether it has registered in the network
-  updateSerial();
-  SerialAT.println("AT+CSQ"); //Signal quality test, value range is 0-31 , 31 is the best
-  updateSerial();
+  // prepare sms
+  
   delay(1000);
   SerialMon.println(k);
-  if(k<3){
+  if(k<0){
     SerialMon.println(k);
     SerialAT.print("AT+CMGF=1\r");                   //Set the module to SMS mode
     updateSerial();
@@ -236,13 +213,15 @@ void loop()
   digitalWrite(controlPin, LOW);
   delay(4000);
 
-  SerialMon.println("Go to seep!");
+  SerialMon.println("Go to sleep!");
   // go to sleep
-  for(int i=0;i<3;++i){
+  for(uint8_t i=0;i<24*10;++i){ // 24 hours per day
+    for(uint8_t j=0;j<45;++j){ // 450 times 8 secs per hour
     //BOD DISABLE - this must be called right before the __asm__ sleep instruction
     MCUCR |= (3 << 5); //set both BODS and BODSE at the same time
     MCUCR = (MCUCR & ~(1 << 5)) | (1 << 6); //then set the BODS bit and clear the BODSE bit at the same time
     __asm__  __volatile__("sleep");//in line assembler to go to sleep
+    }
   }
 }
 
