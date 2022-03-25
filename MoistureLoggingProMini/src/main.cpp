@@ -10,7 +10,8 @@ const char simPIN[] = "";//"1503";
 const int resetPin= 5;
 const int sensorPin= SIG_PIN;
 const int controlPin= PWR_PIN;
-const int espPin= PWR_PIN_ESP32;
+const int controlPin2= PWR_PIN2;
+
 const int rxPin= RX_PIN;
 const int txPin= TX_PIN;
 
@@ -18,6 +19,7 @@ const int txPin= TX_PIN;
 
 SoftwareSerial SerialAT(txPin, rxPin);
 
+#define SEND_SMS
 //#define USE_AT_CMDS
 #define USE_TINYGSM
 
@@ -27,9 +29,14 @@ SoftwareSerial SerialAT(txPin, rxPin);
 #endif
 
 #ifdef USE_TINYGSM
+#undef USE_AT_CMDS
 // Configure TinyGSM library
 #define TINY_GSM_MODEM_SIM800      // Modem is SIM800
 #define TINY_GSM_RX_BUFFER   1024  // Set RX buffer to 1Kb
+#define TINY_GSM_DEBUG SerialMon
+
+#define GSM_AUTOBAUD_MIN 9600
+#define GSM_AUTOBAUD_MAX 57600
 
 #include "TinyGsmClient.h"
 
@@ -81,6 +88,7 @@ int k= 0;
 void setup()
 {
   pinMode(controlPin, OUTPUT);
+  pinMode(controlPin2, OUTPUT);
 
   // Save Power by writing all Digital IO LOW - note that pins just need to be tied one way or another, do not damage devices!
   for (int i = 0; i < 16; i++) {
@@ -101,6 +109,7 @@ void setup()
 
   ADCSRA &= ~(1 << 7); // Disable ADC
   digitalWrite(controlPin, LOW);
+  digitalWrite(controlPin2, HIGH);
 
   SerialMon.begin(9600);
   SerialAT.begin(9600);
@@ -126,9 +135,13 @@ void setup()
 
 void loop()
 {
+  
   ++k;
+  digitalWrite(txPin, HIGH);
+  digitalWrite(rxPin, HIGH);
+  digitalWrite(controlPin2, LOW);
   // power on sim 800
-  digitalWrite(controlPin, HIGH);
+  digitalWrite(controlPin, HIGH);  
   // read moisture
   ADCSRA |= (1 << 7); // Enable ADC
   auto reading = analogRead(sensorPin); // Read from sensor pin 2
@@ -147,6 +160,7 @@ void loop()
   if (!modem.init()) {
     // if (!modem.restart()) {
     SerialMon.println("Failed to restart modem, delaying 10s and retrying");
+    //TinyGsmAutoBaud(SerialAT, GSM_AUTOBAUD_MIN, GSM_AUTOBAUD_MAX);
   }
 
   String name = modem.getModemName();
@@ -166,12 +180,18 @@ void loop()
   int csq = modem.getSignalQuality();
   SerialMon.println("Signal quality: " + String(csq));
 
+#ifdef SEND_SMS
   if(k<4){
     SerialMon.println("Loop counter: " + String(k));
+    modem.waitForNetwork();
     auto res = modem.sendSMS(SMS_TARGET, String(smsText));
     updateSerial();
     SerialMon.println("SMS: " + String(res ? "OK" : "fail"));
   }
+#else
+  SerialMon.println("No SEND_SMS");
+  delay(500);
+#endif
   updateSerial();
 #endif
 
@@ -214,9 +234,15 @@ void loop()
   delay(4000);
 
   SerialMon.println("Go to sleep!");
+
+  delay(50);
+  digitalWrite(txPin, LOW);
+  digitalWrite(rxPin, LOW);
+  digitalWrite(controlPin2, HIGH);
+
   // go to sleep
-  for(uint8_t i=0;i<24*10;++i){ // 24 hours per day
-    for(uint8_t j=0;j<45;++j){ // 450 times 8 secs per hour
+  for(uint8_t i=0;i<88;++i){ // 24 hours per day
+    for(uint8_t j=0;j<120;++j){ // 450 times 8 secs per hour
     //BOD DISABLE - this must be called right before the __asm__ sleep instruction
     MCUCR |= (3 << 5); //set both BODS and BODSE at the same time
     MCUCR = (MCUCR & ~(1 << 5)) | (1 << 6); //then set the BODS bit and clear the BODSE bit at the same time
