@@ -225,11 +225,20 @@ void loop()
   digitalWrite(controlPin, HIGH);
 
   // Read moisture
-  ADCSRA |= (1 << 7); // Enable ADC
-  auto reading = analogRead(sensorPin); // Read from sensor pin 2
-  ADCSRA &= ~(1 << 7); // Disable ADC
+  uint16_t moist[10];
+
+  for(auto k=0;k<10;++k){
+    ADCSRA |= (1 << 7); // Enable ADC
+    uint16_t reading = analogRead(sensorPin); // Read from sensor pin 2
+    ADCSRA &= ~(1 << 7); // Disable ADC
+    moist[k]= reading;
+    auto smsText= "Bodenfeuchte-Wert: " + String(reading);
+    SerialMon.println(smsText);
+    delay(200);
+  }
   
-  auto smsText= "Bodenfeuchte-Wert: " + String(reading);
+  
+  auto smsText= "Bodenfeuchte-Wert: " + String(moist[5]);
   SerialMon.println(smsText);
 
   digitalWrite(resetPin,1);
@@ -296,8 +305,8 @@ void loop()
 
   // const uint8_t max1 = 88;
   // const uint8_t max2 = 120;
-  const uint8_t max1 = 1;
-  const uint8_t max2 = 3;
+  const uint8_t max1 = 88;
+  const uint8_t max2 = 60;
 
   // go to sleep
   for(uint8_t i=0;i<max1;++i){ // 24 hours per day
