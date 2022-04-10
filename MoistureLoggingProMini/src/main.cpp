@@ -127,6 +127,12 @@ ISR(WDT_vect){
 
 String state= "Undefined";
 
+double DisplayValue(uint16_t rawValue){
+  double Slope= -0.2584;
+  double Intercept= 174.6784;
+  return Slope*rawValue + Intercept;
+}
+
 void updateSerial(unsigned int wait_ms= 100){
   String dataString = "";
   delay(wait_ms);
@@ -139,8 +145,12 @@ void updateSerial(unsigned int wait_ms= 100){
   }
 }
 
-void SendSMS()
+void SendSMS(bool sendSMS=true)
 {
+  if(sendSMS==false){
+    return;
+  }
+
   SerialAT.write("AT+CSQ\r");
   updateSerial();
   SerialAT.print("AT+CSQ\r");
@@ -227,7 +237,7 @@ void loop()
   // Read moisture
   uint16_t moist[10];
 
-  for(auto k=0;k<10;++k){
+  for(auto k=0;k<5;++k){
     ADCSRA |= (1 << 7); // Enable ADC
     uint16_t reading = analogRead(sensorPin); // Read from sensor pin 2
     ADCSRA &= ~(1 << 7); // Disable ADC
@@ -237,9 +247,10 @@ void loop()
     delay(200);
   }
   
-  
-  auto smsText= "Bodenfeuchte-Wert: " + String(moist[5]);
+  double moistValue= DisplayValue(moist[4]);
+  auto smsText= "Bodenfeuchte-Wert in Prozent: " + String(moistValue);
   SerialMon.println(smsText);
+  
 
   digitalWrite(resetPin,1);
   delay(1000);
@@ -285,8 +296,11 @@ void loop()
     SerialMon.println("waitForNetwork fail");
   }
 #ifdef SEND_SMS
-  auto res = modem.sendSMS(SMS_TARGET, String(smsText));
-  SerialMon.println("SMS: " + String(res ? "OK" : "fail"));
+  if(moistValue < 60.0){
+    auto res = modem.sendSMS(SMS_TARGET, String(smsText));
+    SerialMon.println("SMS: " + String(res ? "OK" : "fail"));
+  }
+  
 #else
   SerialMon.println("No SEND_SMS");
   delay(500);
