@@ -57,11 +57,7 @@
 // void loop() { 
 //   updateSerial(0);
 // }
-  
 
-
-
-/********************/
 const int resetPin= 5;
 const int sensorPin= SIG_PIN;
 const int controlPin= PWR_PIN;
@@ -69,6 +65,7 @@ const int controlPin2= PWR_PIN2;
 const int rxPin= RX_PIN;
 const int txPin= TX_PIN;
 
+const double moistThr= 60.0; // threshold for soil moisture
 #define USE_TINYGSM
 // #undef USE_TINYGSM
 
@@ -264,39 +261,41 @@ void loop()
   }
 #endif
 #ifdef USE_TINYGSM
-  if (!modem.init()) {
-  // if (!modem.restart()) {
-    SerialMon.println("Failed to restart modem, delaying 10s and retrying");
-  }
+  if(moistValue < moistThr){
+    if (!modem.init()) {
+    // if (!modem.restart()) {
+      SerialMon.println("Failed to restart modem, delaying 10s and retrying");
+    }
 
-  // Unlock your SIM card with a PIN if needed
-  if (strlen(simPIN) && modem.getSimStatus() != 3 ) {
-    modem.simUnlock(simPIN);
-    SerialMon.println("SIM Unlock");
-  }
+    // Unlock your SIM card with a PIN if needed
+    if (strlen(simPIN) && modem.getSimStatus() != 3 ) {
+      modem.simUnlock(simPIN);
+      SerialMon.println("SIM Unlock");
+    }
 
-  String name = modem.getModemName();
-  SerialMon.println("Modem Name: " + name);
+    String name = modem.getModemName();
+    SerialMon.println("Modem Name: " + name);
 
-  String modemInfo = modem.getModemInfo();
-  SerialMon.println("Modem Info: " + modemInfo);
+    String modemInfo = modem.getModemInfo();
+    SerialMon.println("Modem Info: " + modemInfo);
 
-  uint8_t  chargeState = 0;
-  int8_t   percent     = 0;
-  uint16_t milliVolts = 0;
-  modem.getBattStats(chargeState, percent, milliVolts);
-  SerialMon.println("Battery charge state: " + String(chargeState));
-  SerialMon.println("Battery charge 'percent': " + String(percent));
-  SerialMon.println("Battery voltage: " + String(milliVolts / 1000.0F));
-  
-  int csq = modem.getSignalQuality();
-  SerialMon.println("Signal quality: " + String(csq));
+    uint8_t  chargeState = 0;
+    int8_t   percent     = 0;
+    uint16_t milliVolts = 0;
+    modem.getBattStats(chargeState, percent, milliVolts);
+    SerialMon.println("Battery charge state: " + String(chargeState));
+    SerialMon.println("Battery charge 'percent': " + String(percent));
+    SerialMon.println("Battery voltage: " + String(milliVolts / 1000.0F));
+    
+    int csq = modem.getSignalQuality();
+    SerialMon.println("Signal quality: " + String(csq));
 
-  if (!modem.waitForNetwork(10000L)) {
-    SerialMon.println("waitForNetwork fail");
+    if (!modem.waitForNetwork(10000L)) {
+      SerialMon.println("waitForNetwork fail");
+    }
   }
 #ifdef SEND_SMS
-  if(moistValue < 60.0){
+  if(moistValue < moistThr){
     auto res = modem.sendSMS(SMS_TARGET, String(smsText));
     SerialMon.println("SMS: " + String(res ? "OK" : "fail"));
   }
@@ -317,10 +316,13 @@ void loop()
   digitalWrite(rxPin, LOW);
   digitalWrite(controlPin2, HIGH);
 
-  // const uint8_t max1 = 88;
-  // const uint8_t max2 = 120;
+  // 24 hours
   const uint8_t max1 = 88;
-  const uint8_t max2 = 60;
+  const uint8_t max2 = 118;
+
+  // 12 hours
+  // const uint8_t max1 = 88;
+  // const uint8_t max2 = 60;
 
   // go to sleep
   for(uint8_t i=0;i<max1;++i){ // 24 hours per day
