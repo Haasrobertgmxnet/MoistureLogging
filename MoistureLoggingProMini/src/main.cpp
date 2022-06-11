@@ -7,11 +7,11 @@ const int controlPin2= PWR_PIN2;
 const int rxPin= RX_PIN;
 const int txPin= TX_PIN;
 
-const double moistThr= 60.0; // threshold for soil moisture
+const double moistThr= 90.0; // threshold for soil moisture
 const uint16_t milliVoltsThr= 3500.0; // threshold for LiPo Akku = 3.5 V
 
 #define TINY_GSM_MODEM_SIM800
-#define TINY_GSM_RX_BUFFER   1024  // Set RX buffer to 1Kb
+#define TINY_GSM_RX_BUFFER 1024  // Set RX buffer to 1Kb
 
 #define SerialMon Serial
 
@@ -30,11 +30,9 @@ SoftwareSerial SerialAT(rxPin, txPin);
 
 // Set phone numbers, if you want to test SMS and Calls
 #define SMS_TARGET  "+4917680181926"
-// #define SMS_TARGET  "+4917680181926"
-// #define SMS_TARGET  "+491746094125"
 
 // SIM card PIN (leave empty, if not defined)
-const char simPIN[] = "";//"1503";
+const char simPIN[] = "";
 
 #include <TinyGsmClient.h>
 
@@ -106,7 +104,6 @@ void setup()
 
   while (!SerialMon);
   Serial.println("Initializing...");
-
 }
 
 void loop()
@@ -119,7 +116,7 @@ void loop()
   digitalWrite(controlPin, HIGH);
 
   // Read moisture
-  uint16_t moist[10];
+  uint16_t moist[5];
 
   for(auto k=0;k<5;++k){
     ADCSRA |= (1 << 7); // Enable ADC
@@ -145,6 +142,8 @@ void loop()
     SerialMon.println("SIM Unlock");
   }
 
+  delay(2000);
+  
   String name = modem.getModemName();
   SerialMon.println("Modem Name: " + name);
 
@@ -190,8 +189,8 @@ void loop()
   // const uint8_t max1 = 88;
   // const uint8_t max2 = 60;
 
-  const uint8_t max1 = 1;
-  const uint8_t max2 = 4;
+  const uint8_t max1 = 3;
+  const uint8_t max2 = 2;
 
   // go to sleep
   for(uint8_t i=0;i<max1;++i){ // 24 hours per day
