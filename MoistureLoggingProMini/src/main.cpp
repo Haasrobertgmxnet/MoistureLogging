@@ -29,7 +29,8 @@ SoftwareSerial SerialAT(rxPin, txPin);
 #define TINY_GSM_YIELD() { delay(2); }
 
 // Set phone numbers, if you want to test SMS and Calls
-#define SMS_TARGET  "+4917680181926"
+#define SMS_TARGET  "+491605521750"
+#define SMS_TARGET_2  "+4917680181926"
 
 // SIM card PIN (leave empty, if not defined)
 const char simPIN[] = "";
@@ -48,11 +49,65 @@ ISR(WDT_vect){
   //DON'T FORGET THIS!  Needed for the watch dog timer.  This is called after a watch dog timer timeout - this is the interrupt function called after waking up
 }// watchdog interrupt
 
-double DisplayValue(uint16_t rawValue){
-  double Slope= -0.2584;
-  double Intercept= 174.6784;
-  return Slope*rawValue + Intercept;
-}
+#include <EEPROM.h>
+
+//#define WRITE_FIRST_TO_EEPROM 1
+
+struct CalibrationData {
+  double Intercept= 450.0;
+  double Scaling = 230.0;
+};
+
+struct Calibration{
+  Calibration(CalibrationData _calibrationData){
+    // quick and dirty
+    calibrationData.Intercept = _calibrationData.Intercept;
+    calibrationData.Scaling = _calibrationData.Scaling;
+    Serial.println("Constr");
+    Serial.println(calibrationData.Scaling);
+  }
+  Calibration(){}
+
+  double getMoistureValue(uint16_t _rawValue){
+    return 100.0*(calibrationData.Intercept - static_cast<double>(_rawValue))/calibrationData.Scaling;
+  }
+
+  uint16_t getLowerBound(){
+    return static_cast<uint16_t>(calibrationData.Intercept - 1.0*calibrationData.Scaling);
+  }
+  uint16_t getUpperBound(){
+    return static_cast<uint16_t>(calibrationData.Intercept);
+  }
+  bool updateCalibration(uint16_t _newRawValue){
+    SerialMon.println(_newRawValue);
+    auto lb= getLowerBound();
+    auto ub= getUpperBound();
+    if(_newRawValue>=lb && _newRawValue<= ub){
+      return false;
+    }
+    if(_newRawValue> ub){
+      uint16_t ofs = _newRawValue - calibrationData.Intercept;
+      calibrationData.Scaling+= ofs;
+      calibrationData.Intercept+= ofs;
+      return true;
+    }
+    if(_newRawValue< lb){
+      calibrationData.Scaling= calibrationData.Intercept - _newRawValue;
+      return true;
+    }
+    return false;
+  }
+
+  void writeToEEPROM(){
+    EEPROM.put(eeAddress, calibrationData);
+  }
+  void readFromEEPROM(){
+    EEPROM.get(eeAddress, calibrationData);
+  }
+
+  int eeAddress = 0;
+  CalibrationData calibrationData;
+};
 
 void updateSerial(unsigned int wait_ms= 100){
   String dataString = "";
@@ -128,7 +183,31 @@ void loop()
     delay(200);
   }
   
-  double moistValue= DisplayValue(moist[4]);
+  CalibrationData myCalibrationData;
+  Calibration myCalibration(myCalibrationData);
+
+  #ifdef WRITE_FIRST_TO_EEPROM
+  SerialMon.println(myCalibration.calibrationData.Intercept);
+  SerialMon.println(myCalibration.calibrationData.Scaling);
+  SerialMon.println("myCalibration.writeToEEPROM()");
+  myCalibration.writeToEEPROM();
+  #endif
+  
+  SerialMon.println("myCalibration.readFromEEPROM()");
+  myCalibration.readFromEEPROM();
+  SerialMon.println(myCalibration.calibrationData.Intercept);
+  SerialMon.println(myCalibration.calibrationData.Scaling);
+  SerialMon.println(myCalibration.getLowerBound());
+  SerialMon.println(myCalibration.getUpperBound());
+  SerialMon.println(moist[4]);
+  if(myCalibration.updateCalibration(moist[4])){
+    SerialMon.println("Write Calibration update to EEPROM");
+    myCalibration.writeToEEPROM();
+    SerialMon.println(myCalibration.calibrationData.Intercept);
+    SerialMon.println(myCalibration.calibrationData.Scaling);
+  }
+  
+  double moistValue= myCalibration.getMoistureValue(moist[4]);
   auto smsText= "Bodenfeuchte-Wert in Prozent: " + String(moistValue);
   SerialMon.println(smsText);
 
@@ -154,11 +233,13 @@ void loop()
   int8_t   percent     = 0;
   uint16_t milliVolts = 0;
   modem.getBattStats(chargeState, percent, milliVolts);
+  String time = modem.getGSMDateTime(DATE_TIME);
   SerialMon.println("Battery charge state: " + String(chargeState));
   SerialMon.println("Battery charge 'percent': " + String(percent));
   SerialMon.println("Battery voltage: " + String(milliVolts / 1000.0F));
 
   if(moistValue < moistThr || milliVolts< milliVoltsThr){
+    smsText= smsText + " Uhrzeit: " + time;
     smsText= smsText + " Spannung in Volt: " + String(milliVolts / 1000.0F);
     int csq = modem.getSignalQuality();
     SerialMon.println("Signal quality: " + String(csq));
@@ -168,6 +249,9 @@ void loop()
     }
   
     auto res = modem.sendSMS(SMS_TARGET, String(smsText));
+    SerialMon.println("SMS: " + String(res ? "OK" : "fail"));
+
+    res = modem.sendSMS(SMS_TARGET_2, String(smsText));
     SerialMon.println("SMS: " + String(res ? "OK" : "fail"));
   }
   
@@ -182,15 +266,12 @@ void loop()
   digitalWrite(controlPin2, HIGH);
 
   // 24 hours
-  // const uint8_t max1 = 88;
-  // const uint8_t max2 = 118;
+  const uint8_t max1 = 88;
+  const uint8_t max2 = 118;
 
   // 12 hours
   // const uint8_t max1 = 88;
   // const uint8_t max2 = 60;
-
-  const uint8_t max1 = 3;
-  const uint8_t max2 = 2;
 
   // go to sleep
   for(uint8_t i=0;i<max1;++i){ // 24 hours per day
